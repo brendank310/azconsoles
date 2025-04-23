@@ -9,6 +9,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/gobwas/ws v1.4.0
 	github.com/google/uuid v1.6.0
+	golang.org/x/term v0.29.0
 )
 
 require (

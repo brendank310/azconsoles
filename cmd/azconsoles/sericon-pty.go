@@ -7,10 +7,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
 	"github.com/creack/pty"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/brendank310/azconsoles/pkg/azconsoles"
+
+	"golang.org/x/term"
 )
 
 func main() {
@@ -44,6 +45,14 @@ func main() {
 		ptmx.Close()
 		os.Exit(0)
 	}()
+
+	// Set the PTY to raw mode
+	oldState, err := term.MakeRaw(int(ptmx.Fd()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer term.Restore(int(ptmx.Fd()), oldState)
+
 
 	// Start a goroutine to forward data from the websocket to the pty.
 	go func() {
