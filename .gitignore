@@ -18,9 +18,6 @@ bin/
 # Go workspace file
 go.work
 
-# Build artifacts
-bin/
-
 # Go build cache
 .cache
 
