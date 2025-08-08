@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/brendank310/azconsoles/pkg/azconsoles"
+	"github.com/creack/pty"
+	"github.com/gobwas/ws/wsutil"
 	"io"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"github.com/creack/pty"
-	"github.com/gobwas/ws/wsutil"
-	"github.com/brendank310/azconsoles/pkg/azconsoles"
 
 	"golang.org/x/term"
 )
@@ -53,7 +53,6 @@ func main() {
 	}
 	defer term.Restore(int(ptmx.Fd()), oldState)
 
-
 	// Start a goroutine to forward data from the websocket to the pty.
 	go func() {
 		for {
@@ -95,4 +94,3 @@ func main() {
 	// Block forever.
 	select {}
 }
-

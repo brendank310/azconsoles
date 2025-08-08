@@ -1,6 +1,7 @@
-# Binaries for programs and plugins
+# Build artifacts
+bin/
 *.exe
-*.exe~
+
 *.dll
 *.so
 *.dylib
@@ -20,6 +21,9 @@ go.work
 # Build artifacts
 bin/
 
+# Go build cache
+.cache
+
 # IDE files
 .vscode/
 .idea/
@@ -35,3 +39,11 @@ bin/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Coverage files
+*.cover
+coverage.out
