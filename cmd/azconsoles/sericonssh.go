@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gobwas/ws/wsutil"
 	"github.com/brendank310/azconsoles/internal/ppp"
 	"github.com/brendank310/azconsoles/pkg/sericon"
+	"github.com/gobwas/ws/wsutil"
 )
 
 // Target represents the parsed target specification
@@ -30,17 +30,17 @@ type Target struct {
 
 // Config represents the CLI configuration
 type Config struct {
-	Target     Target
-	Baud       int
-	PPPLocal   string
-	PPPPeer    string
-	SSHPort    int
-	Timeout    time.Duration
-	PppdPath   string
-	LogLevel   string
-	KeepPPP    bool
-	DryRun     bool
-	SSHArgs    []string
+	Target   Target
+	Baud     int
+	PPPLocal string
+	PPPPeer  string
+	SSHPort  int
+	Timeout  time.Duration
+	PppdPath string
+	LogLevel string
+	KeepPPP  bool
+	DryRun   bool
+	SSHArgs  []string
 }
 
 func main() {

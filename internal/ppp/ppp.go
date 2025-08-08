@@ -41,8 +41,8 @@ func DefaultConfig() Config {
 
 // Manager manages a PPP connection
 type Manager struct {
-	config     Config
-	cmd        *exec.Cmd
+	config      Config
+	cmd         *exec.Cmd
 	symlinkPath string
 }
 
@@ -98,7 +98,7 @@ func (m *Manager) Start(ctx context.Context, fd *os.File) error {
 // Stop terminates the PPP connection
 func (m *Manager) Stop() error {
 	var err error
-	
+
 	// Terminate pppd if running
 	if m.cmd != nil && m.cmd.Process != nil {
 		if killErr := m.cmd.Process.Signal(syscall.SIGTERM); killErr != nil {
@@ -127,18 +127,18 @@ func (m *Manager) createSymlink(fd *os.File) (string, error) {
 	pid := os.Getpid()
 	fdNum := fd.Fd()
 	symlinkPath := filepath.Join("/tmp", fmt.Sprintf("sericonssh-tty-%d-%d", pid, fdNum))
-	
+
 	// Target path in /proc
 	fdPath := fmt.Sprintf("/proc/%d/fd/%d", pid, fdNum)
-	
+
 	// Remove existing symlink if it exists
 	os.Remove(symlinkPath)
-	
+
 	// Create symlink
 	if err := os.Symlink(fdPath, symlinkPath); err != nil {
 		return "", fmt.Errorf("failed to create symlink %s -> %s: %w", symlinkPath, fdPath, err)
 	}
-	
+
 	return symlinkPath, nil
 }
 
