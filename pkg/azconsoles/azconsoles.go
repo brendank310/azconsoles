@@ -5,13 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
 	_ "time"
-	"github.com/google/uuid"
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
@@ -186,9 +186,9 @@ func ConnectCloudShell() (net.Conn, error) {
 	}
 
 	type CloudShellResponseProperties struct {
-		OSType string `json:"osType"`
+		OSType            string `json:"osType"`
 		ProvisioningState string `json:"provisioningState"`
-		URI string `json:"uri"`
+		URI               string `json:"uri"`
 	}
 
 	type CloudShellResponse struct {
@@ -233,10 +233,10 @@ func ConnectCloudShell() (net.Conn, error) {
 
 	token := strings.TrimPrefix(res.Request.Header.Get("Authorization"), "Bearer ")
 	type CloudShellWebsocketResponse struct {
-		ID string `json:"id"`
-		SocketURI string `json:"socketUri"`
-		IdleTimeout string `json:"idleTimeout"`
-		TokenUpdated bool `json:"tokenUpdated"`
+		ID            string `json:"id"`
+		SocketURI     string `json:"socketUri"`
+		IdleTimeout   string `json:"idleTimeout"`
+		TokenUpdated  bool   `json:"tokenUpdated"`
 		RootDirectory string `json:"rootDirectory"`
 	}
 
@@ -299,8 +299,7 @@ func ConnectCloudShell() (net.Conn, error) {
 		return nil, err
 	}
 
-
-	ctrlConn, _, _, err := ws.Dial(wsCtrlCtx, newURL + "/control")
+	ctrlConn, _, _, err := ws.Dial(wsCtrlCtx, newURL+"/control")
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +308,7 @@ func ConnectCloudShell() (net.Conn, error) {
 	wsutil.WriteClientText(conn, []byte(""))
 	ctrlText, err := wsutil.ReadServerText(conn)
 	if err != nil {
-	 	return nil, err
+		return nil, err
 	}
 
 	fmt.Printf("%v\n", string(ctrlText))
