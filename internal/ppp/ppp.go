@@ -67,8 +67,8 @@ func (m *Manager) Start(ctx context.Context) error {
 		"ipcp-accept-local",
 		"ipcp-accept-remote",
 		fmt.Sprintf("%s:%s", m.config.LocalIP, m.config.PeerIP),
-		fmt.Sprintf("mtu %d", m.config.MTU),
-		fmt.Sprintf("mru %d", m.config.MRU),
+		"mtu", fmt.Sprintf("%d", m.config.MTU),
+		"mru", fmt.Sprintf("%d", m.config.MRU),
 		"connect-delay", "1000",
 		"child-timeout", "10",
 		"pty", m.config.PtyCommand,
@@ -161,19 +161,29 @@ func CheckPppdAvailable(pppdPath string) error {
 	}
 
 	// Check if file exists and is executable
-	if _, err := os.Stat(pppdPath); err != nil {
+	fileInfo, err := os.Stat(pppdPath)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("pppd not found at %s. Install ppp package or specify correct path with --pppd", pppdPath)
 		}
 		return fmt.Errorf("cannot access pppd at %s: %w", pppdPath, err)
 	}
 
-	// Try to execute pppd --help to verify it works
+	// Check if we can execute pppd - it requires either setuid root or dip group membership
 	cmd := exec.Command(pppdPath, "--help")
 	if err := cmd.Run(); err != nil {
 		// Check if it's a permission issue
 		if strings.Contains(err.Error(), "permission denied") {
-			return fmt.Errorf("insufficient permissions to run pppd. Try running with sudo or ensure pppd has appropriate permissions")
+			// Provide detailed guidance based on file permissions
+			mode := fileInfo.Mode()
+			var suggestion string
+			if mode&os.ModeSetuid != 0 {
+				// pppd is setuid, might need to be in dip group
+				suggestion = "Run with sudo, add user to 'dip' group (sudo usermod -a -G dip $USER), or ensure pppd has setuid permissions"
+			} else {
+				suggestion = "Run with sudo or ensure pppd has setuid root permissions"
+			}
+			return fmt.Errorf("insufficient permissions to run pppd. %s", suggestion)
 		}
 		return fmt.Errorf("pppd at %s is not working properly: %w", pppdPath, err)
 	}
