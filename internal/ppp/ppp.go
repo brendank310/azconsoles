@@ -6,8 +6,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +21,7 @@ type Config struct {
 	Timeout    time.Duration // Timeout for PPP to come up
 	PppdPath   string        // Path to pppd binary
 	KeepOnExit bool          // Keep PPP interface on exit (debug mode)
+	PtyCommand string        // Command to run as PTY for pppd
 }
 
 // DefaultConfig returns default PPP configuration
@@ -36,14 +35,14 @@ func DefaultConfig() Config {
 		Timeout:    30 * time.Second,
 		PppdPath:   "/usr/sbin/pppd",
 		KeepOnExit: false,
+		PtyCommand: "",
 	}
 }
 
 // Manager manages a PPP connection
 type Manager struct {
-	config      Config
-	cmd         *exec.Cmd
-	symlinkPath string
+	config Config
+	cmd    *exec.Cmd
 }
 
 // NewManager creates a new PPP manager
@@ -53,36 +52,33 @@ func NewManager(config Config) *Manager {
 	}
 }
 
-// Start sets up PPP over the given file descriptor
-func (m *Manager) Start(ctx context.Context, fd *os.File) error {
-	// Create symlink to the file descriptor
-	symlinkPath, err := m.createSymlink(fd)
-	if err != nil {
-		return fmt.Errorf("failed to create symlink: %w", err)
+// Start sets up PPP using pppd's native pty option
+func (m *Manager) Start(ctx context.Context) error {
+	if m.config.PtyCommand == "" {
+		return fmt.Errorf("PtyCommand is required")
 	}
-	m.symlinkPath = symlinkPath
 
-	// Start pppd
+	// Build pppd arguments using native pty option
 	args := []string{
-		m.config.PppdPath,
-		symlinkPath,
-		strconv.Itoa(m.config.Baud),
-		"local",
+		"updetach",
 		"noauth",
-		"nodetach",
+		"local",
+		"nocrtscts",
 		"ipcp-accept-local",
 		"ipcp-accept-remote",
 		fmt.Sprintf("%s:%s", m.config.LocalIP, m.config.PeerIP),
 		fmt.Sprintf("mtu %d", m.config.MTU),
 		fmt.Sprintf("mru %d", m.config.MRU),
-		"nocrtscts", // Default to no modem control
+		"connect-delay", "1000",
+		"child-timeout", "10",
+		"pty", m.config.PtyCommand,
 	}
 
-	m.cmd = exec.CommandContext(ctx, args[0], args[1:]...)
-	m.cmd.Stderr = os.Stderr // Let pppd errors go to stderr
+	m.cmd = exec.CommandContext(ctx, m.config.PppdPath, args...)
+	m.cmd.Stdout = os.Stderr // Let pppd output go to stderr
+	m.cmd.Stderr = os.Stderr
 
 	if err := m.cmd.Start(); err != nil {
-		m.cleanup()
 		return fmt.Errorf("failed to start pppd: %w", err)
 	}
 
@@ -97,8 +93,6 @@ func (m *Manager) Start(ctx context.Context, fd *os.File) error {
 
 // Stop terminates the PPP connection
 func (m *Manager) Stop() error {
-	var err error
-
 	// Terminate pppd if running
 	if m.cmd != nil && m.cmd.Process != nil {
 		if killErr := m.cmd.Process.Signal(syscall.SIGTERM); killErr != nil {
@@ -108,38 +102,12 @@ func (m *Manager) Stop() error {
 		m.cmd.Wait() // Wait for process to exit
 	}
 
-	// Clean up symlink
-	if cleanupErr := m.cleanup(); cleanupErr != nil {
-		err = cleanupErr
-	}
-
-	return err
+	return nil
 }
 
 // GetPeerIP returns the peer IP address
 func (m *Manager) GetPeerIP() string {
 	return m.config.PeerIP
-}
-
-// createSymlink creates a symlink to the file descriptor
-func (m *Manager) createSymlink(fd *os.File) (string, error) {
-	// Create unique symlink path
-	pid := os.Getpid()
-	fdNum := fd.Fd()
-	symlinkPath := filepath.Join("/tmp", fmt.Sprintf("sericonssh-tty-%d-%d", pid, fdNum))
-
-	// Target path in /proc
-	fdPath := fmt.Sprintf("/proc/%d/fd/%d", pid, fdNum)
-
-	// Remove existing symlink if it exists
-	os.Remove(symlinkPath)
-
-	// Create symlink
-	if err := os.Symlink(fdPath, symlinkPath); err != nil {
-		return "", fmt.Errorf("failed to create symlink %s -> %s: %w", symlinkPath, fdPath, err)
-	}
-
-	return symlinkPath, nil
 }
 
 // waitForInterface waits for the ppp0 interface to come up with the expected IP
@@ -184,16 +152,6 @@ func (m *Manager) checkInterface() bool {
 	}
 
 	return false
-}
-
-// cleanup removes the symlink
-func (m *Manager) cleanup() error {
-	if m.symlinkPath != "" {
-		err := os.Remove(m.symlinkPath)
-		m.symlinkPath = ""
-		return err
-	}
-	return nil
 }
 
 // CheckPppdAvailable checks if pppd is available and executable

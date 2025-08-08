@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -16,8 +15,6 @@ import (
 	"time"
 
 	"github.com/brendank310/azconsoles/internal/ppp"
-	"github.com/brendank310/azconsoles/pkg/sericon"
-	"github.com/gobwas/ws/wsutil"
 )
 
 // Target represents the parsed target specification
@@ -214,28 +211,26 @@ func run(config *Config) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Connect to Azure serial console
-	if config.LogLevel == "debug" {
-		log.Printf("Connecting to Azure serial console...")
-	}
-
-	serialConfig := sericon.Config{
-		SubscriptionID: config.Target.Subscription,
-		ResourceGroup:  config.Target.ResourceGroup,
-		VMName:         config.Target.VMName,
-	}
-
-	serialConn, err := sericon.Connect(serialConfig)
+	// Find sericon-pty binary
+	sericonPtyPath, err := findSericonPty()
 	if err != nil {
-		return fmt.Errorf("failed to connect to serial console: %w", err)
+		return fmt.Errorf("failed to find sericon-pty: %w", err)
 	}
-	defer serialConn.Close()
+
+	// Build sericon-pty command string
+	sericonCmd := fmt.Sprintf("%s --subscription %s --resource-group %s --vm-name %s --speed %d",
+		sericonPtyPath,
+		config.Target.Subscription,
+		config.Target.ResourceGroup,
+		config.Target.VMName,
+		config.Baud,
+	)
 
 	if config.LogLevel == "debug" {
-		log.Printf("Serial connection established")
+		log.Printf("PPP command: %s", sericonCmd)
 	}
 
-	// Set up PPP
+	// Set up PPP with native pty option
 	pppConfig := ppp.Config{
 		LocalIP:    config.PPPLocal,
 		PeerIP:     config.PPPPeer,
@@ -245,20 +240,17 @@ func run(config *Config) error {
 		Timeout:    config.Timeout,
 		PppdPath:   config.PppdPath,
 		KeepOnExit: config.KeepPPP,
+		PtyCommand: sericonCmd,
 	}
 
 	pppMgr := ppp.NewManager(pppConfig)
 
-	// Create a pipe for serial data forwarding
-	serialFd := createSerialForwarder(ctx, serialConn)
-	defer serialFd.Close()
-
 	// Start PPP
 	if config.LogLevel == "debug" {
-		log.Printf("Starting PPP...")
+		log.Printf("Starting PPP with pty command...")
 	}
 
-	if err := pppMgr.Start(ctx, serialFd); err != nil {
+	if err := pppMgr.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start PPP: %w", err)
 	}
 
@@ -302,66 +294,21 @@ func run(config *Config) error {
 	return sshCmd.Run()
 }
 
-// createSerialForwarder creates a pipe that forwards data between
-// the serial connection and a file descriptor that pppd can use
-func createSerialForwarder(ctx context.Context, serialConn *sericon.Connection) *os.File {
-	r, w, err := os.Pipe()
-	if err != nil {
-		log.Fatalf("Failed to create pipe: %v", err)
+// findSericonPty finds the sericon-pty binary in common locations
+func findSericonPty() (string, error) {
+	// Try common locations
+	candidates := []string{
+		"sericon-pty",                // In PATH
+		"./bin/sericon-pty",          // Relative to current directory
+		"/usr/local/bin/sericon-pty", // Common install location
+		"/usr/bin/sericon-pty",       // System location
 	}
 
-	rawConn := serialConn.GetRawConnection()
-
-	// Forward from serial to pipe (for pppd to read)
-	go func() {
-		defer w.Close()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				data, err := wsutil.ReadServerBinary(rawConn)
-				if err != nil {
-					if ctx.Err() == nil {
-						log.Printf("Error reading from serial: %v", err)
-					}
-					return
-				}
-				if _, err := w.Write(data); err != nil {
-					if ctx.Err() == nil {
-						log.Printf("Error writing to pipe: %v", err)
-					}
-					return
-				}
-			}
+	for _, candidate := range candidates {
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path, nil
 		}
-	}()
+	}
 
-	// Forward from pipe to serial (for pppd to write)
-	go func() {
-		defer r.Close()
-		buf := make([]byte, 1024)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				n, err := r.Read(buf)
-				if err != nil {
-					if err != io.EOF && ctx.Err() == nil {
-						log.Printf("Error reading from pipe: %v", err)
-					}
-					return
-				}
-				if err := wsutil.WriteClientBinary(rawConn, buf[:n]); err != nil {
-					if ctx.Err() == nil {
-						log.Printf("Error writing to serial: %v", err)
-					}
-					return
-				}
-			}
-		}
-	}()
-
-	return r
+	return "", fmt.Errorf("sericon-pty not found in PATH or common locations")
 }
